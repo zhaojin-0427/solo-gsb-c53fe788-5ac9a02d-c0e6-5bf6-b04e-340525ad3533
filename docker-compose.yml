@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mail
+      POSTGRES_PASSWORD: mail
+      POSTGRES_DB: mailmerge
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mail -d mailmerge"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://mail:mail@db:5432/mailmerge
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+    restart: unless-stopped
+
+  # One-shot test runner:  docker compose run --rm test
+  test:
+    build: .
+    profiles: ["test"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://mail:mail@db:5432/mailmerge_test
+    volumes:
+      - .:/code:ro
+    working_dir: /code
+    command: python -m pytest tests -q
+
+volumes:
+  dbdata:
